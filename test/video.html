@@ -2,19 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Simple Video Recorder</title>
+  <title>Universal Video Recorder v2</title>
   <style>
     body { font-family: sans-serif; padding: 2em; }
+    .warn { color: #b00; margin-bottom: 1em; }
     video { width: 400px; height: 300px; margin-bottom: 1em; background: #000; }
     button { margin: 0.5em 0.5em 0.5em 0; font-size: 1em; }
   </style>
 </head>
 <body>
-  <h2>Simple Video Recorder</h2>
+  <h2>Universal Video Recorder (WebM preferred)</h2>
+  <div id="warn" class="warn"></div>
   <video id="preview" autoplay muted playsinline></video>
   <video id="playback" controls style="display:none"></video>
   <br>
-  <button id="startBtn">Start Recording</button>
+  <button id="startBtn" disabled>Start Recording</button>
   <button id="stopBtn" disabled>Stop Recording</button>
 
   <script>
@@ -24,27 +26,73 @@
     const playback = document.getElementById('playback');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const warn = document.getElementById('warn');
+    let selectedMime = "";
 
-    // Get user media
-    async function initStream() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      preview.srcObject = stream;
-      return stream;
+    function getBestMimeType() {
+      // Prioritize WebM VP9, VP8, then MP4 (if supported)
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        return 'video/webm;codecs=vp9';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        return 'video/webm;codecs=vp8';
+      } else if (MediaRecorder.isTypeSupported('video/mp4;codecs="avc1.42E01E,mp4a.40.2"')) {
+        return 'video/mp4';
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        return 'video/mp4';
+      } else {
+        return null;
+      }
     }
 
-    let streamPromise = initStream();
+    function isIOS() {
+      // Basic detection
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    }
 
-    startBtn.onclick = async () => {
-      const stream = await streamPromise;
+    // Setup on load
+    async function setup() {
+      selectedMime = getBestMimeType();
+
+      if (!selectedMime) {
+        warn.textContent = "Sorry, your device/browser does not support video recording here.";
+        startBtn.disabled = true;
+        return;
+      }
+
+      if (isIOS()) {
+        warn.textContent = "Warning: iOS browsers have limited or buggy video recording. Recording likely won't play back here.";
+      } else if (selectedMime.indexOf("mp4") >= 0) {
+        warn.textContent = "Note: Recording in MP4 for compatibility. (Safari and some mobile devices)";
+      } else {
+        warn.textContent = "";
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        preview.srcObject = stream;
+        startBtn.disabled = false;
+
+        // Attach event handlers
+        startBtn.onclick = () => startRecording(stream);
+        stopBtn.onclick = stopRecording;
+      } catch(e) {
+        warn.textContent = "Camera/microphone access is required.";
+      }
+    }
+
+    function startRecording(stream) {
       recordedChunks = [];
-      mediaRecorder = new MediaRecorder(stream);
-
+      try {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMime });
+      } catch(e) {
+        warn.textContent = "MediaRecorder could not be started: " + e;
+        return;
+      }
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) recordedChunks.push(event.data);
       };
-
       mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const blob = new Blob(recordedChunks, { type: selectedMime });
         playback.src = URL.createObjectURL(blob);
         playback.style.display = 'block';
         preview.style.display = 'none';
@@ -56,15 +104,18 @@
       stopBtn.disabled = false;
       playback.style.display = 'none';
       preview.style.display = 'block';
-    };
+    }
 
-    stopBtn.onclick = () => {
+    function stopRecording() {
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
         startBtn.disabled = false;
         stopBtn.disabled = true;
       }
-    };
+    }
+
+    // Start up
+    setup();
   </script>
 </body>
 </html>
