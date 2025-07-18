@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Video Recorder</title>
+  <style>
+    body { font-family: sans-serif; padding: 2em; }
+    video { width: 400px; height: 300px; margin-bottom: 1em; background: #000; }
+    button { margin: 0.5em 0.5em 0.5em 0; font-size: 1em; }
+  </style>
+</head>
+<body>
+  <h2>Simple Video Recorder</h2>
+  <video id="preview" autoplay muted playsinline></video>
+  <video id="playback" controls style="display:none"></video>
+  <br>
+  <button id="startBtn">Start Recording</button>
+  <button id="stopBtn" disabled>Stop Recording</button>
+
+  <script>
+    let mediaRecorder;
+    let recordedChunks = [];
+    const preview = document.getElementById('preview');
+    const playback = document.getElementById('playback');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+
+    // Get user media
+    async function initStream() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      preview.srcObject = stream;
+      return stream;
+    }
+
+    let streamPromise = initStream();
+
+    startBtn.onclick = async () => {
+      const stream = await streamPromise;
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordedChunks.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        playback.src = URL.createObjectURL(blob);
+        playback.style.display = 'block';
+        preview.style.display = 'none';
+        playback.play();
+      };
+
+      mediaRecorder.start();
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      playback.style.display = 'none';
+      preview.style.display = 'block';
+    };
+
+    stopBtn.onclick = () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    };
+  </script>
+</body>
+</html>
+
